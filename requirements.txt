@@ -2,3 +2,4 @@ flask
 torch
 transformers
 deep-translator
+gunicorn
