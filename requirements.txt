@@ -1,5 +1,5 @@
-flask
-gunicorn
-torch==2.8.0
-transformers==4.56.1
-deep-translator
+flask==2.3.3
+gunicorn==21.2.0
+vaderSentiment==3.3.2
+deep-translator==1.11.4
+requests==2.31.0

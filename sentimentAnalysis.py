@@ -1,19 +1,14 @@
 from flask import Flask, request, jsonify
-from transformers import DistilBertForSequenceClassification, DistilBertTokenizer, pipeline
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from deep_translator import GoogleTranslator
 import re
 
 app = Flask(__name__)
 
-# Load the DistilBERT model for sentiment analysis
-model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-tokenizer = DistilBertTokenizer.from_pretrained(model_name)
-model = DistilBertForSequenceClassification.from_pretrained(model_name)
+# Initialize VADER analyzer
+analyzer = SentimentIntensityAnalyzer()
 
-# Create a sentiment-analysis pipeline
-sentiment_pipeline = pipeline("text-classification", model=model, tokenizer=tokenizer, return_all_scores=True)
-
-# Custom Pangasinan dictionary for common words and phrases with their sentiment values
+# Custom Pangasinan dictionary
 pangasinan_sentiment_dict = {
     # Positive words/phrases
     "mabli": "positive",
@@ -47,7 +42,6 @@ pangasinan_sentiment_dict = {
     "mankakasi": "neutral",
 }
 
-# Common Pangasinan expressions with their sentiment values
 pangasinan_expressions = {
     "anggapo so nakala": "negative",
     "masakit so ulok": "negative",
@@ -90,34 +84,24 @@ def detect_and_translate(text):
         return text, pangasinan_sentiment, is_pangasinan
 
 
-def custom_sentiment_logic(translated_text):
-    """Apply additional custom sentiment rules to translated text."""
-    text_lower = translated_text.lower()
+def vader_sentiment_analysis(text):
+    """Analyze sentiment using VADER."""
+    scores = analyzer.polarity_scores(text)
 
+    # Custom rules for specific phrases
+    text_lower = text.lower()
     if any(phrase in text_lower for phrase in ["long queue", "long wait", "waiting for hours"]):
         return "negative"
     if any(phrase in text_lower for phrase in ["excellent service", "wonderful experience"]):
         return "positive"
 
-    return None
-
-
-def classify_sentiment(translated_text):
-    """Classify sentiment using DistilBERT with neutral thresholding."""
-    results = sentiment_pipeline(translated_text)[0]
-
-    # Extract probabilities
-    positive_score = next(item["score"] for item in results if item["label"] == "POSITIVE")
-    negative_score = next(item["score"] for item in results if item["label"] == "NEGATIVE")
-
-    # Neutral threshold
-    threshold = 0.6
-    if max(positive_score, negative_score) < threshold:
-        return "neutral"
-    elif positive_score > negative_score:
+    # VADER scoring
+    if scores['compound'] >= 0.05:
         return "positive"
-    else:
+    elif scores['compound'] <= -0.05:
         return "negative"
+    else:
+        return "neutral"
 
 
 @app.route('/analyze', methods=['POST'])
@@ -131,11 +115,7 @@ def analyze_sentiment():
         if pangasinan_sentiment:
             sentiment = pangasinan_sentiment
         else:
-            custom_sentiment = custom_sentiment_logic(translated_text)
-            if custom_sentiment:
-                sentiment = custom_sentiment
-            else:
-                sentiment = classify_sentiment(translated_text)
+            sentiment = vader_sentiment_analysis(translated_text)
 
         response = {
             "Feedback": text,
@@ -148,6 +128,11 @@ def analyze_sentiment():
 
     except Exception as e:
         return jsonify({"error": str(e)})
+
+
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({"status": "Sentiment Analysis API is running"})
 
 
 if __name__ == '__main__':
